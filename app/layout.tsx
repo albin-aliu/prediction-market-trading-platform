@@ -15,22 +15,23 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body className={inter.className}>
-        <nav className="bg-gray-900 text-white p-4">
+        <nav className="bg-gray-900 text-white p-4 fixed w-full top-0 z-50 shadow-lg">
           <div className="container mx-auto flex justify-between items-center">
             <h1 className="text-xl font-bold">Prediction Market Trader</h1>
-            <div className="space-x-4">
-              <a href="/" className="hover:text-blue-400">Home</a>
-              <a href="/dashboard" className="hover:text-blue-400">Dashboard</a>
-              <a href="/markets" className="hover:text-blue-400">Markets</a>
-              <a href="/arbitrage" className="hover:text-blue-400">Arbitrage</a>
+            <div className="space-x-6">
+              <a href="#home" className="hover:text-blue-400 transition-colors">Home</a>
+              <a href="#dashboard" className="hover:text-blue-400 transition-colors">Dashboard</a>
+              <a href="#markets" className="hover:text-blue-400 transition-colors">Markets</a>
+              <a href="#arbitrage" className="hover:text-blue-400 transition-colors">Arbitrage</a>
             </div>
           </div>
         </nav>
-        <main className="min-h-screen">{children}</main>
-        <footer className="bg-gray-900 text-white p-4 text-center">
-          <p>© 2025 Prediction Market Trading Platform</p>
+        <main className="pt-16">{children}</main>
+        <footer className="bg-gray-900 text-white p-8 text-center">
+          <p className="text-lg">© 2025 Prediction Market Trading Platform</p>
+          <p className="text-sm text-gray-400 mt-2">Built with Next.js & PolyRouter</p>
         </footer>
       </body>
     </html>
