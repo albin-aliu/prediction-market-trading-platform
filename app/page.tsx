@@ -1,3 +1,5 @@
+import { MarketsList } from '@/components/MarketsList'
+
 export default function Home() {
   return (
     <div>
@@ -86,34 +88,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <h2 className="text-5xl font-bold mb-12 text-center">All Markets</h2>
           
-          <div className="mb-8 flex flex-wrap gap-4 justify-center">
-            <select className="border border-gray-300 dark:border-gray-600 rounded-lg px-6 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-              <option value="">All Platforms</option>
-              <option value="polymarket">Polymarket</option>
-              <option value="kalshi">Kalshi</option>
-              <option value="manifold">Manifold</option>
-              <option value="limitless">Limitless</option>
-            </select>
-            
-            <select className="border border-gray-300 dark:border-gray-600 rounded-lg px-6 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-              <option value="resolved">Resolved</option>
-            </select>
-            
-            <input 
-              type="text" 
-              placeholder="Search markets..." 
-              className="border border-gray-300 dark:border-gray-600 rounded-lg px-6 py-3 flex-1 max-w-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            />
-          </div>
-
-          <div className="bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-600">
-            <h3 className="text-2xl font-semibold mb-4">Available Markets</h3>
-            <p className="text-gray-500 dark:text-gray-400">
-              Connect your PolyRouter API key to view available markets
-            </p>
-          </div>
+          <MarketsList />
         </div>
       </section>
 
