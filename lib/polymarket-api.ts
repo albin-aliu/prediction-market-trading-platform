@@ -1,8 +1,31 @@
 /**
- * Direct Polymarket API Client
+ * POLYMARKET API CLIENT
+ * 
+ * Purpose: Direct integration with Polymarket's public API
+ * Base URL: https://gamma-api.polymarket.com
  * Docs: https://docs.polymarket.com
+ * 
+ * Key Features:
+ * - No API key required (public endpoints)
+ * - Fetches live market data with images
+ * - Parses JSON string fields (outcomes, prices)
+ * - Filters for active, non-closed markets only
+ * 
+ * Main Methods:
+ * - getMarkets(limit): Raw market data from API
+ * - getSimplifiedMarkets(limit): Cleaned data in standard format
+ * - getMarket(id): Single market by condition ID
+ * 
+ * Used By:
+ * - lib/markets-client.ts (unified client)
+ * - app/api/markets/route.ts (markets endpoint)
+ * - app/api/arbitrage/route.ts (arbitrage detection)
  */
 
+/**
+ * Raw market data structure from Polymarket API
+ * Note: 'outcomes' and 'outcomePrices' are JSON STRINGS (must parse!)
+ */
 export interface PolymarketMarket {
   id: string
   conditionId: string
@@ -27,8 +50,30 @@ export interface PolymarketMarket {
 export class PolymarketAPI {
   private baseUrl = 'https://gamma-api.polymarket.com'
 
+  /**
+   * Fetches raw market data from Polymarket
+   * 
+   * @param limit - Number of markets to return (default: 50)
+   * @returns Array of raw PolymarketMarket objects
+   * 
+   * Process:
+   * 1. Request 3x limit (many markets are closed/inactive)
+   * 2. Filter for active=true and closed=false
+   * 3. Return first {limit} results
+   * 
+   * Example response:
+   * {
+   *   conditionId: "0x123...",
+   *   question: "Will Bitcoin reach $100k?",
+   *   outcomes: '["Yes","No"]',     // JSON string!
+   *   outcomePrices: '["0.65","0.35"]',  // JSON string!
+   *   volumeNum: 1234567,
+   *   image: "https://polymarket-upload.s3..."
+   * }
+   */
   async getMarkets(limit = 50): Promise<PolymarketMarket[]> {
     try {
+      // Fetch 3x limit because many markets are closed/inactive
       const response = await fetch(
         `${this.baseUrl}/markets?limit=${limit * 3}&active=true&closed=false`,
         {
@@ -44,7 +89,7 @@ export class PolymarketAPI {
 
       const data = await response.json()
       
-      // Filter for actually open markets and limit results
+      // Double-check filters and limit results
       return (data || [])
         .filter((m: PolymarketMarket) => m.active && !m.closed)
         .slice(0, limit)
@@ -76,20 +121,42 @@ export class PolymarketAPI {
     }
   }
 
-  // Get simplified market data in our standard format
+  /**
+   * Transforms raw Polymarket data into standardized format
+   * 
+   * @param limit - Number of markets to return
+   * @returns Array of simplified Market objects
+   * 
+   * Process:
+   * 1. Fetch raw markets from API
+   * 2. Parse JSON strings (outcomes, outcomePrices)
+   * 3. Extract YES/NO prices from arrays
+   * 4. Convert to standard Market interface
+   * 5. Include images for display
+   * 
+   * Note: Polymarket returns outcomes as:
+   *   outcomes: '["Yes", "No"]'       ← JSON string!
+   *   outcomePrices: '["0.65", "0.35"]' ← JSON string!
+   * 
+   * We must:
+   * 1. JSON.parse() both strings
+   * 2. Find index of "Yes" and "No"
+   * 3. Extract corresponding prices
+   */
   async getSimplifiedMarkets(limit = 50) {
     const markets = await this.getMarkets(limit)
     
     return markets.map(m => {
       try {
-        // Parse outcomes and prices from JSON strings
+        // CRITICAL: Parse JSON strings from API
         const outcomes = JSON.parse(m.outcomes || '[]')
         const prices = JSON.parse(m.outcomePrices || '[]')
         
-        // Find Yes/No prices
+        // Find array indices for YES and NO outcomes
         const yesIndex = outcomes.findIndex((o: string) => o.toLowerCase() === 'yes')
         const noIndex = outcomes.findIndex((o: string) => o.toLowerCase() === 'no')
         
+        // Extract prices at those indices
         const yesPrice = yesIndex >= 0 ? parseFloat(prices[yesIndex] || '0') : 0
         const noPrice = noIndex >= 0 ? parseFloat(prices[noIndex] || '0') : 0
         
