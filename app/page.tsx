@@ -1,4 +1,6 @@
 import { MarketsList } from '@/components/MarketsList'
+import { ArbitrageOpportunities } from '@/components/ArbitrageOpportunities'
+import { OrderForm } from '@/components/OrderForm'
 
 export default function Home() {
   return (
@@ -36,14 +38,52 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-12">
+          <div className="mt-12 flex gap-4 justify-center">
             <a 
-              href="#dashboard" 
+              href="#trade" 
               className="bg-blue-600 text-white px-8 py-4 rounded-lg text-xl font-semibold hover:bg-blue-700 inline-block transition-colors"
             >
-              Get Started →
+              Start Trading →
+            </a>
+            <a 
+              href="#arbitrage-top" 
+              className="bg-purple-600 text-white px-8 py-4 rounded-lg text-xl font-semibold hover:bg-purple-700 inline-block transition-colors"
+            >
+              View Arbitrage →
             </a>
           </div>
+        </div>
+      </section>
+
+      {/* Arbitrage Opportunities Section */}
+      <section id="arbitrage-top" className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-5xl font-bold mb-4">🎯 Market Comparison Dashboard</h2>
+            <p className="text-xl text-gray-300 mb-2">
+              Side-by-side comparison: Polymarket vs Kalshi
+            </p>
+            <p className="text-sm text-gray-400">
+              Demonstrating real-time market data across platforms
+            </p>
+          </div>
+          <ArbitrageOpportunities />
+        </div>
+      </section>
+
+      {/* Order Placement Section */}
+      <section id="trade" className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-5xl font-bold mb-4">📈 Place Your Order</h2>
+            <p className="text-xl text-gray-600 dark:text-gray-300 mb-2">
+              Trade on prediction markets with ease
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Demo mode - Connect wallet for real trading
+            </p>
+          </div>
+          <OrderForm />
         </div>
       </section>
 
@@ -99,7 +139,7 @@ export default function Home() {
           
           <div className="mb-8 bg-blue-50 dark:bg-blue-900 p-6 rounded-xl border-l-4 border-blue-500">
             <p className="text-blue-800 dark:text-blue-200 text-lg">
-              <strong>Note:</strong> Arbitrage detection will scan for price discrepancies 
+              <strong>Note:</strong> Arbitrage detection scans for price discrepancies 
               across different platforms for the same or similar events.
             </p>
           </div>
@@ -107,7 +147,7 @@ export default function Home() {
           <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
             <h3 className="text-2xl font-semibold mb-4">Active Opportunities</h3>
             <p className="text-gray-500 dark:text-gray-400">
-              No arbitrage opportunities detected. Connect your API key to start monitoring.
+              Scroll up to see live arbitrage opportunities or check the Markets section for individual market data.
             </p>
           </div>
         </div>
@@ -115,4 +155,3 @@ export default function Home() {
     </div>
   )
 }
-

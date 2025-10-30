@@ -8,15 +8,31 @@ interface MarketCardProps {
 export function MarketCard({ market, onClick }: MarketCardProps) {
   return (
     <div 
-      className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer"
+      className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer overflow-hidden"
       onClick={onClick}
     >
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="text-lg font-semibold flex-1">{market.title}</h3>
-        <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
-          {market.platform}
-        </span>
-      </div>
+      {/* Market Image */}
+      {market.image && (
+        <div className="relative w-full h-48 bg-gradient-to-br from-blue-500 to-purple-600">
+          <img 
+            src={market.image} 
+            alt={market.title}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              // Hide image if it fails to load
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+        </div>
+      )}
+      
+      <div className="p-6">
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-lg font-semibold flex-1">{market.title}</h3>
+          <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+            {market.platform}
+          </span>
+        </div>
       
       {market.description && (
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
@@ -40,17 +56,18 @@ export function MarketCard({ market, onClick }: MarketCardProps) {
         </div>
       </div>
       
-      <div className="mt-4 pt-4 border-t flex justify-between text-sm text-gray-500">
-        <span className={`font-medium ${
-          market.status === 'open' ? 'text-green-600' : 
-          market.status === 'closed' ? 'text-gray-600' : 
-          'text-blue-600'
-        }`}>
-          {market.status.toUpperCase()}
-        </span>
-        {market.expiresAt && (
-          <span>Expires: {new Date(market.expiresAt).toLocaleDateString()}</span>
-        )}
+        <div className="mt-4 pt-4 border-t flex justify-between text-sm text-gray-500">
+          <span className={`font-medium ${
+            market.status === 'open' ? 'text-green-600' : 
+            market.status === 'closed' ? 'text-gray-600' : 
+            'text-blue-600'
+          }`}>
+            {market.status.toUpperCase()}
+          </span>
+          {market.expiresAt && (
+            <span>Expires: {new Date(market.expiresAt).toLocaleDateString()}</span>
+          )}
+        </div>
       </div>
     </div>
   )

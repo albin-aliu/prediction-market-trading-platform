@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPolyRouterClient } from '@/lib/polyrouter'
-import { Platform, MarketStatus } from '@/lib/types'
+import { marketsClient } from '@/lib/markets-client'
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const platform = searchParams.get('platform') as Platform | null
-    const status = searchParams.get('status') as MarketStatus | null
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const platform = searchParams.get('platform') as 'polymarket' | 'kalshi' | 'all' | null
+    const limit = parseInt(searchParams.get('limit') || '50')
 
-    // Create PolyRouter client
-    const client = createPolyRouterClient()
-    
-    if (!client) {
-      return NextResponse.json({
-        error: 'PolyRouter API key not configured',
-        message: 'Please set POLYROUTER_API_KEY in your .env file',
-        markets: []
-      }, { status: 500 })
-    }
-
-    // Fetch markets from PolyRouter
-    const markets = await client.getMarkets({
-      platform: platform || undefined,
-      status: status || undefined,
+    // Fetch markets directly from platforms
+    const markets = await marketsClient.getMarkets({
+      platform: platform || 'all',
       limit
     })
 
@@ -33,7 +19,6 @@ export async function GET(request: NextRequest) {
       markets,
       params: {
         platform: platform || 'all',
-        status: status || 'all',
         limit
       }
     })
@@ -47,4 +32,3 @@ export async function GET(request: NextRequest) {
     }, { status: 500 })
   }
 }
-

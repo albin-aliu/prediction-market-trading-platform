@@ -12,6 +12,8 @@ export interface Market {
   noPrice?: number
   createdAt: Date
   expiresAt?: Date
+  image?: string
+  icon?: string
 }
 
 export type Platform = 
