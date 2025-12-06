@@ -46,27 +46,28 @@ export interface MarketTokens {
 
 /**
  * Get the token IDs for a market's YES and NO outcomes
+ * Uses server-side API to avoid CORS issues
  */
 export async function getMarketTokens(conditionId: string): Promise<MarketTokens | null> {
   try {
-    // Polymarket markets have two tokens: YES and NO
-    // The token IDs are derived from the condition ID
-    const response = await fetch(`${GAMMA_API}/markets?condition_id=${conditionId}`)
+    // Call our server API to fetch tokens (avoids CORS)
+    const response = await fetch('/api/trade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get_market_tokens',
+        conditionId
+      })
+    })
     
-    if (!response.ok) {
-      console.error('Failed to fetch market tokens')
+    const data = await response.json()
+    
+    if (!data.success) {
+      console.error('Failed to fetch market tokens:', data.message)
       return null
     }
     
-    const markets = await response.json()
-    if (markets.length === 0) return null
-    
-    const market = markets[0]
-    return {
-      questionId: market.questionId || conditionId,
-      yesTokenId: market.tokens?.[0]?.token_id || '',
-      noTokenId: market.tokens?.[1]?.token_id || ''
-    }
+    return data.tokens
   } catch (error) {
     console.error('Error fetching market tokens:', error)
     return null
@@ -226,39 +227,58 @@ export async function createSignedOrder(params: {
 }
 
 /**
+ * Convert BigInt values to strings for JSON serialization
+ */
+function serializeOrder(order: object): object {
+  const serialized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(order)) {
+    if (typeof value === 'bigint') {
+      serialized[key] = value.toString()
+    } else {
+      serialized[key] = value
+    }
+  }
+  return serialized
+}
+
+/**
  * Submit a signed order to Polymarket CLOB
+ * Uses server-side API to avoid CORS issues
  */
 export async function submitOrder(
   order: object, 
   signature: string
 ): Promise<OrderResult> {
   try {
-    const response = await fetch(`${CLOB_API}/order`, {
+    // Serialize BigInt values to strings for JSON
+    const serializedOrder = serializeOrder(order)
+    
+    // Call our server API to submit order (avoids CORS)
+    const response = await fetch('/api/trade', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        order,
+        action: 'submit_order',
+        order: serializedOrder,
         signature,
-        owner: (order as { maker: string }).maker
+        userAddress: (serializedOrder as { maker: string }).maker
       })
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('CLOB API error:', errorText)
+    const result = await response.json()
+    
+    if (!result.success) {
+      console.error('Order submission failed:', result.message)
       return {
         success: false,
-        message: `Order submission failed: ${errorText}`
+        message: result.message || 'Order submission failed'
       }
     }
 
-    const result = await response.json()
     return {
       success: true,
-      orderId: result.orderID || result.id,
-      message: 'Order placed successfully!'
+      orderId: result.orderId,
+      message: result.message || 'Order placed successfully!'
     }
   } catch (error) {
     console.error('Error submitting order:', error)
@@ -274,34 +294,24 @@ export async function submitOrder(
  * Combines creating, signing, and submitting an order
  */
 export async function placePolymarketOrder(params: {
-  marketId: string      // The market/condition ID
+  tokenId: string       // The CLOB token ID (from market.yesTokenId or market.noTokenId)
   side: TokenSide       // 'YES' or 'NO'
   orderSide: OrderSide  // 'BUY' or 'SELL'
   size: number          // Number of shares
   price: number         // Price (0.01 to 0.99)
   userAddress: `0x${string}`
 }): Promise<OrderResult> {
-  const { marketId, side, orderSide, size, price, userAddress } = params
+  const { tokenId, side, orderSide, size, price, userAddress } = params
 
   try {
-    // Step 1: Get market token IDs
-    console.log('Fetching market tokens for:', marketId)
-    const tokens = await getMarketTokens(marketId)
-    
-    // For now, use the marketId as token ID if we can't fetch tokens
-    // This is a fallback - in production, you'd want proper token ID resolution
-    const tokenId = tokens 
-      ? (side === 'YES' ? tokens.yesTokenId : tokens.noTokenId)
-      : marketId
-    
     if (!tokenId) {
       return {
         success: false,
-        message: 'Could not find token ID for this market'
+        message: 'Token ID is required for trading'
       }
     }
 
-    console.log('Using token ID:', tokenId)
+    console.log('Placing order with token ID:', tokenId)
 
     // Step 2: Create and sign the order
     console.log('Creating signed order...')

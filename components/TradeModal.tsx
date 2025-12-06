@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useAccount } from 'wagmi'
+import { useState, useEffect } from 'react'
 import { Market } from '@/lib/types'
-import { approveUSDC, checkUSDCApproval } from '@/lib/simple-trading'
-import { placePolymarketOrder } from '@/lib/polymarket-trading'
+import Link from 'next/link'
 
 interface TradeModalProps {
   market: Market
@@ -12,11 +10,17 @@ interface TradeModalProps {
 }
 
 export function TradeModal({ market, onClose }: TradeModalProps) {
-  const { address, isConnected } = useAccount()
   const [side, setSide] = useState<'yes' | 'no'>('yes')
-  const [dollarAmount, setDollarAmount] = useState('10') // User enters dollars to spend
+  const [dollarAmount, setDollarAmount] = useState('10')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
+  const [botConfigured, setBotConfigured] = useState(false)
+
+  // Check if trading bot is configured
+  useEffect(() => {
+    const key = localStorage.getItem('polymarket_bot_key')
+    setBotConfigured(!!key)
+  }, [])
 
   const price = side === 'yes' ? (market.yesPrice || 0.5) : (market.noPrice || 0.5)
   const cost = parseFloat(dollarAmount) || 0 // User's dollar input IS the cost
@@ -50,35 +54,41 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
   }
 
   const handleTrade = async () => {
-    if (!isConnected || !address) {
-      setStatus('Please connect your wallet first')
+    const privateKey = localStorage.getItem('polymarket_bot_key')
+    
+    if (!privateKey) {
+      setStatus('❌ Please configure your trading bot first')
       return
     }
 
     setLoading(true)
-    setStatus('Preparing order...')
+    setStatus('Placing order...')
 
     try {
-      // Check USDC approval
-      const hasApproval = await checkUSDCApproval(address as `0x${string}`, cost.toString())
+      // Get the token ID for the selected side
+      const tokenId = side === 'yes' ? market.yesTokenId : market.noTokenId
       
-      if (!hasApproval) {
-        setStatus('Approving USDC... (check MetaMask)')
-        await approveUSDC('10000') // Approve large amount
-        setStatus('USDC approved!')
-        await new Promise(r => setTimeout(r, 1000))
+      if (!tokenId) {
+        setStatus('❌ Token ID not available for this market')
+        setLoading(false)
+        return
       }
-
-      setStatus('Signing order... (check MetaMask)')
       
-      const result = await placePolymarketOrder({
-        marketId: market.id,
-        side: side.toUpperCase() as 'YES' | 'NO',
-        orderSide: 'BUY',
-        size: shares,
-        price: price,
-        userAddress: address as `0x${string}`
+      const response = await fetch('/api/bot/trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'place_order',
+          privateKey,
+          tokenId,
+          side: 'BUY',
+          size: shares.toString(),
+          price: price.toString()
+        })
       })
+
+      const result = await response.json()
+      console.log('Trade result:', result)
 
       if (result.success) {
         setStatus('✅ Order placed successfully!')
@@ -86,8 +96,9 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
       } else {
         setStatus(`❌ ${result.message}`)
       }
-    } catch (error) {
-      setStatus(`❌ ${error instanceof Error ? error.message : 'Order failed'}`)
+    } catch (error: any) {
+      console.error('Trade error:', error)
+      setStatus(`❌ ${error.message || 'Order failed'}`)
     } finally {
       setLoading(false)
     }
@@ -248,15 +259,21 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
             </div>
           )}
 
-          {/* Action Button */}
-          {!isConnected ? (
+          {/* Action Buttons */}
+          {!botConfigured ? (
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 text-center">
               <p className="text-yellow-800 dark:text-yellow-200 font-medium">
-                🔒 Connect wallet to trade
+                🤖 Trading Bot Required
               </p>
-              <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">
-                Click the wallet button in the navigation
+              <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1 mb-3">
+                Configure your trading wallet to place orders
               </p>
+              <Link
+                href="/bot"
+                className="inline-block px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+              >
+                Setup Trading Bot →
+              </Link>
             </div>
           ) : (
             <button
@@ -268,7 +285,7 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
                   : 'bg-red-600 hover:bg-red-700 text-white'
               }`}
             >
-              {loading ? '⏳ Processing...' : `Invest ${formatCurrency(cost)} on ${side.toUpperCase()}`}
+              {loading ? '⏳ Placing Order...' : `Buy ${side.toUpperCase()} for ${formatCurrency(cost)}`}
             </button>
           )}
         </div>

@@ -14,6 +14,9 @@ export interface Market {
   expiresAt?: Date
   image?: string
   icon?: string
+  // Polymarket-specific token IDs for trading
+  yesTokenId?: string
+  noTokenId?: string
 }
 
 export type Platform = 

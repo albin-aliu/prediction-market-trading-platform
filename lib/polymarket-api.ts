@@ -35,6 +35,7 @@ export interface PolymarketMarket {
   endDateIso: string
   outcomes: string
   outcomePrices: string
+  clobTokenIds?: string  // JSON string of token IDs: '["yesTokenId", "noTokenId"]'
   active: boolean
   closed: boolean
   slug: string
@@ -152,6 +153,7 @@ export class PolymarketAPI {
         // CRITICAL: Parse JSON strings from API
         const outcomes = JSON.parse(m.outcomes || '[]')
         const prices = JSON.parse(m.outcomePrices || '[]')
+        const tokenIds = JSON.parse(m.clobTokenIds || '[]')
         
         // Find array indices for YES and NO outcomes
         const yesIndex = outcomes.findIndex((o: string) => o.toLowerCase() === 'yes')
@@ -160,6 +162,10 @@ export class PolymarketAPI {
         // Extract prices at those indices
         const yesPrice = yesIndex >= 0 ? parseFloat(prices[yesIndex] || '0') : 0
         const noPrice = noIndex >= 0 ? parseFloat(prices[noIndex] || '0') : 0
+        
+        // Extract token IDs (YES is first, NO is second in clobTokenIds)
+        const yesTokenId = tokenIds[0] || ''
+        const noTokenId = tokenIds[1] || ''
         
         return {
           id: m.conditionId,
@@ -171,6 +177,8 @@ export class PolymarketAPI {
           liquidity: m.liquidityNum || 0,
           yesPrice,
           noPrice,
+          yesTokenId,
+          noTokenId,
           createdAt: new Date(),
           expiresAt: new Date(m.endDateIso),
           image: m.image,

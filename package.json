@@ -10,6 +10,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ethersproject/providers": "^5.8.0",
+    "@ethersproject/wallet": "^5.8.0",
     "@polymarket/clob-client": "^4.22.8",
     "@tanstack/react-query": "^5.90.5",
     "axios": "^1.6.0",
