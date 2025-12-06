@@ -71,11 +71,12 @@ export class PolymarketAPI {
    *   image: "https://polymarket-upload.s3..."
    * }
    */
-  async getMarkets(limit = 50): Promise<PolymarketMarket[]> {
+  async getMarkets(limit = 500): Promise<PolymarketMarket[]> {
     try {
-      // Fetch 3x limit because many markets are closed/inactive
+      // Fetch up to 1000 markets (Polymarket API max)
+      const fetchLimit = Math.min(limit, 1000)
       const response = await fetch(
-        `${this.baseUrl}/markets?limit=${limit * 3}&active=true&closed=false`,
+        `${this.baseUrl}/markets?limit=${fetchLimit}&active=true&closed=false`,
         {
           headers: {
             'Accept': 'application/json',

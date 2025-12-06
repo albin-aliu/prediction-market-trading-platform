@@ -10,12 +10,18 @@
 
 'use client'
 
+import { useState, useEffect } from 'react'
 import { useAccount, useConnect, useDisconnect, useBalance, useSwitchChain } from 'wagmi'
 import { formatUnits } from 'viem'
 import { USDC_ADDRESS } from '@/lib/web3-config'
 import { polygon, polygonMumbai } from 'wagmi/chains'
 
 export function WalletConnect() {
+  // Fix hydration mismatch - only render after client mount
+  const [mounted, setMounted] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  useEffect(() => setMounted(true), [])
+
   const { address, isConnected, chainId } = useAccount()
   const { connect, connectors, isPending } = useConnect()
   const { disconnect } = useDisconnect()
@@ -34,10 +40,45 @@ export function WalletConnect() {
     chainId,
   })
 
+  const isPolygon = chainId === polygon.id
+  const isTestnet = chainId === polygonMumbai.id
+  const isWrongNetwork = isConnected && !isPolygon && !isTestnet
+
+  // Auto-switch to Polygon when connected to wrong network
+  useEffect(() => {
+    const autoSwitch = async () => {
+      if (isConnected && isWrongNetwork && switchChain && !switching) {
+        setSwitching(true)
+        try {
+          switchChain({ chainId: polygon.id })
+        } catch (error) {
+          console.error('Auto-switch failed:', error)
+        }
+        // Small delay before allowing another switch attempt
+        setTimeout(() => setSwitching(false), 2000)
+      }
+    }
+    autoSwitch()
+  }, [isConnected, isWrongNetwork, switchChain, switching])
+
+  // Show loading placeholder until client hydration is complete
+  if (!mounted) {
+    return (
+      <div className="bg-gray-200 dark:bg-gray-700 animate-pulse px-6 py-2 rounded-lg w-40 h-10" />
+    )
+  }
+
   if (isConnected && address) {
-    const isPolygon = chainId === polygon.id
-    const isTestnet = chainId === polygonMumbai.id
-    const isWrongNetwork = !isPolygon && !isTestnet
+    // Show switching state
+    if (switching) {
+      return (
+        <div className="flex items-center gap-3">
+          <div className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-semibold animate-pulse">
+            🔄 Switching to Polygon...
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div className="flex items-center gap-3">
@@ -95,18 +136,43 @@ export function WalletConnect() {
     )
   }
 
+  const handleConnect = async () => {
+    const connector = connectors[0] // Get the first (MetaMask) connector
+    if (connector) {
+      try {
+        await connect({ connector })
+      } catch (error) {
+        console.error('Connection error:', error)
+        alert('Failed to connect. Make sure MetaMask is installed and unlocked.')
+      }
+    } else {
+      alert('No wallet detected. Please install MetaMask.')
+    }
+  }
+
+  // Check if MetaMask is installed
+  const hasMetaMask = typeof window !== 'undefined' && window.ethereum
+
   return (
     <div className="flex gap-2">
-      {connectors.map((connector) => (
+      {!hasMetaMask ? (
+        <a
+          href="https://metamask.io/download/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl"
+        >
+          Install MetaMask
+        </a>
+      ) : (
         <button
-          key={connector.id}
-          onClick={() => connect({ connector })}
+          onClick={handleConnect}
           disabled={isPending}
           className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-semibold transition-all disabled:opacity-50 shadow-lg hover:shadow-xl"
         >
-          {isPending ? 'Connecting...' : `Connect ${connector.name}`}
+          {isPending ? 'Connecting...' : '🦊 Connect MetaMask'}
         </button>
-      ))}
+      )}
     </div>
   )
 }

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-// import { useAccount } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { Market } from '@/lib/types'
-// import { approveUSDC, placeOrder } from '@/lib/simple-trading'
+import { approveUSDC, checkUSDCApproval } from '@/lib/simple-trading'
+import { placePolymarketOrder } from '@/lib/polymarket-trading'
 
 interface OrderFormProps {
   preselectedMarket?: Market
@@ -11,9 +12,8 @@ interface OrderFormProps {
 }
 
 export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps) {
-  // Temporarily disabled - Web3 integration coming soon
-  const address: string | undefined = undefined
-  const isConnected = false
+  // Real wallet connection
+  const { address, isConnected } = useAccount()
   const [markets, setMarkets] = useState<Market[]>([])
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(preselectedMarket || null)
   const [orderSide, setOrderSide] = useState<'yes' | 'no'>(preselectedSide || 'yes')
@@ -24,6 +24,8 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [approving, setApproving] = useState(false)
   const [txHash, setTxHash] = useState<string>('')
+  const [needsApproval, setNeedsApproval] = useState(true)
+  const [orderStatus, setOrderStatus] = useState<string>('')
 
   useEffect(() => {
     if (!preselectedMarket) {
@@ -70,6 +72,51 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
     }
   }
 
+  // Check USDC approval when wallet connects or amount changes
+  useEffect(() => {
+    const checkApproval = async () => {
+      if (address && isConnected) {
+        const orderDetails = calculateOrderDetails()
+        if (orderDetails) {
+          const hasApproval = await checkUSDCApproval(
+            address as `0x${string}`,
+            orderDetails.totalCost.toString()
+          )
+          setNeedsApproval(!hasApproval)
+        }
+      }
+    }
+    checkApproval()
+  }, [address, isConnected, amount, selectedMarket, orderSide])
+
+  const handleApproveUSDC = async () => {
+    if (!address) return
+    
+    setApproving(true)
+    setOrderStatus('Approving USDC...')
+    
+    try {
+      const orderDetails = calculateOrderDetails()
+      if (!orderDetails) throw new Error('Invalid order details')
+      
+      // Approve a large amount so user doesn't need to approve again
+      const hash = await approveUSDC('10000') // Approve $10,000 USDC
+      setTxHash(hash)
+      setOrderStatus('USDC approved! Waiting for confirmation...')
+      
+      // Wait a bit for the transaction to be mined
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      
+      setNeedsApproval(false)
+      setOrderStatus('USDC approved successfully!')
+    } catch (error) {
+      console.error('Approval failed:', error)
+      setOrderStatus(`Approval failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setApproving(false)
+    }
+  }
+
   const handleSubmitOrder = async () => {
     if (!isConnected || !address) {
       alert('Please connect your wallet first!')
@@ -82,6 +129,7 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
     }
 
     setLoading(true)
+    setOrderStatus('Preparing order...')
     
     try {
       const orderDetails = calculateOrderDetails()
@@ -89,29 +137,51 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
         throw new Error('Invalid order details')
       }
 
-      // Step 1: Approve USDC (if needed) - DEMO MODE
-      setApproving(true)
-      // const approvalHash = await approveUSDC(orderDetails.totalCost.toString())
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate approval
-      console.log('DEMO: USDC approved')
-      setApproving(false)
-
-      // Step 2: Place order - DEMO MODE
-      const result = {
-        success: true,
-        message: 'Demo order placed successfully',
-        txHash: '0x' + Math.random().toString(16).substring(2, 66)
+      // Step 1: Check and approve USDC if needed
+      if (needsApproval) {
+        setApproving(true)
+        setOrderStatus('Approving USDC spending...')
+        
+        try {
+          const hash = await approveUSDC(orderDetails.totalCost.toString())
+          setTxHash(hash)
+          setOrderStatus('USDC approved! Preparing order...')
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          setNeedsApproval(false)
+        } catch (approvalError) {
+          throw new Error('USDC approval failed. Please try again.')
+        } finally {
+          setApproving(false)
+        }
       }
 
+      // Step 2: Place order via Polymarket CLOB
+      setOrderStatus('Signing order... (Check MetaMask)')
+      
+      const price = orderType === 'market'
+        ? (orderSide === 'yes' ? selectedMarket.yesPrice || 0.5 : selectedMarket.noPrice || 0.5)
+        : parseFloat(limitPrice) / 100
+
+      const result = await placePolymarketOrder({
+        marketId: selectedMarket.id,
+        side: orderSide.toUpperCase() as 'YES' | 'NO',
+        orderSide: 'BUY',
+        size: orderDetails.shares,
+        price: price,
+        userAddress: address as `0x${string}`
+      })
+
       if (result.success) {
-        setTxHash(result.txHash || '')
+        setTxHash(result.orderId || '')
+        setOrderStatus('Order placed successfully!')
         alert(
           `✅ ORDER PLACED!\n\n` +
           `Market: ${selectedMarket.title}\n` +
           `Side: ${orderSide.toUpperCase()}\n` +
           `Shares: ${orderDetails.shares}\n` +
+          `Price: ${(price * 100).toFixed(1)}¢\n` +
           `Total Cost: $${orderDetails.totalCost.toFixed(2)}\n` +
-          `Transaction: ${result.txHash?.slice(0, 10)}...`
+          `Order ID: ${result.orderId || 'Pending'}`
         )
         setShowConfirmation(false)
         setAmount('10')
@@ -120,6 +190,7 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
       }
     } catch (error) {
       console.error('Order failed:', error)
+      setOrderStatus(`Order failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
       alert(`❌ Order failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
@@ -260,6 +331,13 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
             </div>
           )}
 
+          {/* Order Status */}
+          {orderStatus && (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-sm text-blue-800 dark:text-blue-200">{orderStatus}</p>
+            </div>
+          )}
+
           {/* Submit Button */}
           {!isConnected ? (
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-4 text-center">
@@ -269,6 +347,24 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
               <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-2">
                 Click "Connect Wallet" in the navigation bar
               </p>
+            </div>
+          ) : needsApproval ? (
+            <div className="space-y-3">
+              <div className="bg-orange-50 dark:bg-orange-900/20 border-2 border-orange-400 dark:border-orange-600 rounded-lg p-4">
+                <p className="text-orange-800 dark:text-orange-200 font-semibold text-sm">
+                  ⚠️ First-time setup: Approve USDC spending
+                </p>
+                <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                  This is a one-time approval that allows Polymarket to use your USDC for trading.
+                </p>
+              </div>
+              <button
+                onClick={handleApproveUSDC}
+                disabled={approving || !selectedMarket || !amount}
+                className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold py-4 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+              >
+                {approving ? '⏳ Approving USDC...' : '🔓 Approve USDC'}
+              </button>
             </div>
           ) : (
             <button

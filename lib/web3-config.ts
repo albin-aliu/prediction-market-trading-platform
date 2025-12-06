@@ -15,24 +15,13 @@
 
 import { http, createConfig } from 'wagmi'
 import { polygon, polygonMumbai } from 'wagmi/chains'
-import { injected, walletConnect } from 'wagmi/connectors'
-
-// WalletConnect Project ID (get from https://cloud.walletconnect.com)
-// For now using public demo ID - REPLACE THIS!
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo-project-id'
+import { injected } from 'wagmi/connectors'
 
 export const config = createConfig({
   chains: [polygon, polygonMumbai], // Mainnet and Testnet
   connectors: [
-    injected(), // MetaMask, Coinbase Wallet, Brave Wallet, etc.
-    walletConnect({
-      projectId,
-      metadata: {
-        name: 'Prediction Market Trading Platform',
-        description: 'Trade on Polymarket with live data',
-        url: 'http://localhost:3002',
-        icons: ['https://avatars.githubusercontent.com/u/37784886']
-      }
+    injected({
+      target: 'metaMask', // Only target MetaMask
     }),
   ],
   transports: {
