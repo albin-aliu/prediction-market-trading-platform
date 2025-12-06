@@ -27,6 +27,7 @@ export type Platform =
   | 'sxbet'
   | 'novig'
   | 'prophetx'
+  | 'all'
 
 export type MarketStatus = 'open' | 'closed' | 'resolved'
 
