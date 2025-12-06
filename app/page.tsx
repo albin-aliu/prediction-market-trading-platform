@@ -67,7 +67,7 @@ export default function Home() {
       
       // Sort by how balanced the odds are (50/50 = most balanced, 1/99 = least balanced)
       // Markets closer to 50% appear first, extreme odds appear last
-      const sortedMarkets = validMarkets.sort((a: Market, b: Market) => {
+      const sortedMarkets: Market[] = validMarkets.sort((a: Market, b: Market) => {
         const aBalance = Math.abs(0.5 - (a.yesPrice || 0.5)) // 0 = perfectly balanced
         const bBalance = Math.abs(0.5 - (b.yesPrice || 0.5))
         return aBalance - bBalance // Lower (more balanced) first
@@ -75,18 +75,18 @@ export default function Home() {
       
       // Shuffle within balance tiers to add variety
       // Group into tiers: very balanced (0-15%), moderate (15-35%), extreme (35%+)
-      const veryBalanced = sortedMarkets.filter((m: Market) => Math.abs(0.5 - (m.yesPrice || 0.5)) <= 0.15)
-      const moderate = sortedMarkets.filter((m: Market) => {
+      const veryBalanced: Market[] = sortedMarkets.filter((m: Market) => Math.abs(0.5 - (m.yesPrice || 0.5)) <= 0.15)
+      const moderate: Market[] = sortedMarkets.filter((m: Market) => {
         const balance = Math.abs(0.5 - (m.yesPrice || 0.5))
         return balance > 0.15 && balance <= 0.35
       })
-      const extreme = sortedMarkets.filter((m: Market) => Math.abs(0.5 - (m.yesPrice || 0.5)) > 0.35)
+      const extreme: Market[] = sortedMarkets.filter((m: Market) => Math.abs(0.5 - (m.yesPrice || 0.5)) > 0.35)
       
       // Shuffle each tier and combine
       setMarkets([
-        ...shuffleArray(veryBalanced),
-        ...shuffleArray(moderate),
-        ...shuffleArray(extreme)
+        ...shuffleArray<Market>(veryBalanced),
+        ...shuffleArray<Market>(moderate),
+        ...shuffleArray<Market>(extreme)
       ])
     } catch (error) {
       console.error('Error fetching markets:', error)

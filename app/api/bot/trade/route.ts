@@ -124,9 +124,9 @@ export async function POST(request: NextRequest) {
             tokenID: tokenId,
             price: parseFloat(price),
             size: parseFloat(size),
-            side: side.toUpperCase() as 'BUY' | 'SELL',
+            side: side.toUpperCase() as any,
           }, {
-            tickSize: tickSize.toString(),
+            tickSize: tickSize as any,
             negRisk: negRisk
           })
 

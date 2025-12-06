@@ -162,8 +162,14 @@ export function OrderForm({ preselectedMarket, preselectedSide }: OrderFormProps
         ? (orderSide === 'yes' ? selectedMarket.yesPrice || 0.5 : selectedMarket.noPrice || 0.5)
         : parseFloat(limitPrice) / 100
 
+      // Get the correct token ID based on side
+      const tokenId = orderSide === 'yes' ? selectedMarket.yesTokenId : selectedMarket.noTokenId
+      if (!tokenId) {
+        throw new Error('Token ID not available for this market')
+      }
+
       const result = await placePolymarketOrder({
-        marketId: selectedMarket.id,
+        tokenId,
         side: orderSide.toUpperCase() as 'YES' | 'NO',
         orderSide: 'BUY',
         size: orderDetails.shares,

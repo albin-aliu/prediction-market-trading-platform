@@ -20,7 +20,7 @@ import { PolymarketAPI } from './polymarket-api'
 import { Market } from './types'
 
 // Supported platforms (add more as they're integrated)
-export type Platform = 'polymarket' | 'all'
+export type Platform = 'polymarket' | 'kalshi' | 'all'
 
 export class MarketsClient {
   private polymarket = new PolymarketAPI()
