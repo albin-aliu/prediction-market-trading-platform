@@ -42,12 +42,6 @@ export default function RootLayout({
                     Markets
                   </Link>
                   <Link 
-                    href="/bot"
-                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                  >
-                    🤖 Bot
-                  </Link>
-                  <Link 
                     href="/portfolio"
                     className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                   >

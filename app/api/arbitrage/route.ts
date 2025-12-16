@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { marketsClient } from '@/lib/markets-client'
 import { Market } from '@/lib/types'
 
+export const dynamic = 'force-dynamic'
+
 interface ArbitrageOpportunity {
   event: string
   market1: Market | null

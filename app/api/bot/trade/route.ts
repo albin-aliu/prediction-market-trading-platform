@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Wallet } from '@ethersproject/wallet'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { ClobClient } from '@polymarket/clob-client'
+import * as crypto from 'crypto'
 
 // Polygon configuration
 const POLYGON_RPC = 'https://polygon-rpc.com'
@@ -14,6 +15,25 @@ const CLOB_HOST = 'https://clob.polymarket.com'
 const API_KEY = process.env.POLYMARKET_API_KEY
 const API_SECRET = process.env.POLYMARKET_SECRET
 const API_PASSPHRASE = process.env.POLYMARKET_PASSPHRASE
+const POLYMARKET_FUNDER = process.env.POLYMARKET_FUNDER
+
+// Generate HMAC signature for L2 auth
+function createL2Signature(
+  secret: string,
+  timestamp: string,
+  method: string,
+  requestPath: string,
+  body: string = ''
+): string {
+  const message = timestamp + method + requestPath + body
+  // Convert URL-safe base64 secret to standard base64 for decoding
+  const standardSecret = secret.replace(/-/g, '+').replace(/_/g, '/')
+  const key = Buffer.from(standardSecret, 'base64')
+  const hmac = crypto.createHmac('sha256', key)
+  hmac.update(message)
+  // Return standard base64 (Polymarket expects this)
+  return hmac.digest('base64')
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -96,52 +116,109 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          console.log('Creating CLOB client with L2 auth...')
-          console.log('Token:', tokenId)
-          console.log('Side:', side, 'Size:', size, 'Price:', price)
+          console.log('========== TRADE REQUEST ==========')
+          console.log('Step 1: Initializing...')
+          console.log('  Token ID:', tokenId)
+          console.log('  Side:', side, 'Size:', size, 'Price:', price)
+          console.log('  Wallet address:', walletAddress)
+          console.log('  CLOB Host:', CLOB_HOST)
+          console.log('  Chain ID:', CHAIN_ID)
           
-          // Initialize client with wallet + L2 credentials
+          // Step 2: Create initial client without credentials
+          console.log('\nStep 2: Creating initial CLOB client (no creds)...')
           const client = new ClobClient(
             CLOB_HOST,
             CHAIN_ID,
             wallet,
-            creds, // L2 credentials
+            undefined, // NO pre-made credentials
             0, // EOA signature type
-            walletAddress, // Funder
+            walletAddress,
             undefined,
-            true // useServerTime
+            true
           )
+          console.log('  Initial client created successfully')
+          
+          // Step 3: Derive API credentials
+          console.log('\nStep 3: Deriving API credentials from wallet...')
+          let derivedCreds
+          try {
+            derivedCreds = await client.createOrDeriveApiKey()
+            console.log('  SUCCESS! Derived credentials:')
+            console.log('  - API Key:', derivedCreds.key)
+            console.log('  - Secret:', derivedCreds.secret?.substring(0, 10) + '...')
+            console.log('  - Passphrase:', derivedCreds.passphrase?.substring(0, 10) + '...')
+          } catch (deriveError: any) {
+            console.log('  FAILED to derive API key!')
+            console.log('  Error:', deriveError.message)
+            console.log('  Full error:', JSON.stringify(deriveError, null, 2))
+            throw deriveError
+          }
+          
+          // Step 4: Create trading client with derived creds
+          console.log('\nStep 4: Creating trading client with derived creds...')
+          const tradingClient = new ClobClient(
+            CLOB_HOST,
+            CHAIN_ID,
+            wallet,
+            derivedCreds,
+            0,
+            walletAddress,
+            undefined,
+            true
+          )
+          console.log('  Trading client created successfully')
 
-          // Get market info
-          console.log('Getting tick size...')
-          const tickSize = await client.getTickSize(tokenId)
-          const negRisk = await client.getNegRisk(tokenId)
-          console.log('Tick size:', tickSize, 'Neg risk:', negRisk)
+          // Step 5: Get market info
+          console.log('\nStep 5: Getting market info...')
+          const tickSize = await tradingClient.getTickSize(tokenId)
+          const negRisk = await tradingClient.getNegRisk(tokenId)
+          console.log('  Tick size:', tickSize)
+          console.log('  Neg risk:', negRisk)
 
-          // Create and post order using the SDK
-          console.log('Creating and posting order...')
-          const orderResult = await client.createAndPostOrder({
-            tokenID: tokenId,
-            price: parseFloat(price),
-            size: parseFloat(size),
-            side: side.toUpperCase() as any,
-          }, {
-            tickSize: tickSize as any,
-            negRisk: negRisk
-          })
+          // Step 6: Create and post order
+          console.log('\nStep 6: Creating and posting order...')
+          let orderResult
+          try {
+            orderResult = await tradingClient.createAndPostOrder({
+              tokenID: tokenId,
+              price: parseFloat(price),
+              size: parseFloat(size),
+              side: side.toUpperCase() as any,
+            }, {
+              tickSize: tickSize as any,
+              negRisk: negRisk
+            })
+            console.log('  Order result:', JSON.stringify(orderResult, null, 2))
+          } catch (orderError: any) {
+            console.log('  FAILED to create/post order!')
+            console.log('  Error message:', orderError.message)
+            console.log('  Error response:', orderError.response?.data)
+            throw orderError
+          }
 
-          console.log('Order result:', orderResult)
-
+          console.log('\n========== TRADE SUCCESS ==========')
           return NextResponse.json({
             success: true,
             order: orderResult,
             message: 'Order placed successfully!'
           })
         } catch (error: any) {
-          console.error('Error placing order:', error)
+          console.log('\n========== TRADE FAILED ==========')
+          console.error('Error type:', error.constructor?.name)
+          console.error('Error message:', error.message)
+          console.error('Error stack:', error.stack)
+          if (error.response) {
+            console.error('Response status:', error.response.status)
+            console.error('Response data:', error.response.data)
+          }
           return NextResponse.json({
             success: false,
-            message: error.message || 'Failed to place order'
+            message: error.message || 'Failed to place order',
+            errorDetails: {
+              type: error.constructor?.name,
+              message: error.message,
+              response: error.response?.data
+            }
           })
         }
       }

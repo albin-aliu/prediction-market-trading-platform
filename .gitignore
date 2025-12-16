@@ -46,3 +46,4 @@ config/secrets.json
 *.key
 *.pem
 
+.env.local

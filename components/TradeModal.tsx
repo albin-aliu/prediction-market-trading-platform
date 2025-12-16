@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { Market } from '@/lib/types'
-import Link from 'next/link'
+import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignTypedData } from 'wagmi'
+import { USDC_ADDRESS, CTF_EXCHANGE, ERC20_ABI } from '@/lib/web3-config'
+import { parseUnits } from 'viem'
 
 interface TradeModalProps {
   market: Market
@@ -14,13 +16,56 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
   const [dollarAmount, setDollarAmount] = useState('10')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
-  const [botConfigured, setBotConfigured] = useState(false)
+  const [approving, setApproving] = useState(false)
 
-  // Check if trading bot is configured
+  const { address, isConnected } = useAccount()
+  const { signTypedDataAsync } = useSignTypedData()
+
+  // Check USDC allowance for CTF Exchange
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: address ? [address, CTF_EXCHANGE] : undefined,
+  })
+
+  // Write contract for approval
+  const { writeContract, data: approveHash } = useWriteContract()
+
+  // Wait for approval transaction
+  const { isLoading: isApprovalPending, isSuccess: isApprovalSuccess } = useWaitForTransactionReceipt({
+    hash: approveHash,
+  })
+
+  // Check if enough allowance (1 billion USDC max)
+  const hasEnoughAllowance = allowance && allowance > parseUnits('1000', 6)
+
+  // Refetch allowance after approval
   useEffect(() => {
-    const key = localStorage.getItem('polymarket_bot_key')
-    setBotConfigured(!!key)
-  }, [])
+    if (isApprovalSuccess) {
+      refetchAllowance()
+      setStatus('✅ USDC approved! You can now trade.')
+      setApproving(false)
+    }
+  }, [isApprovalSuccess, refetchAllowance])
+
+  const handleApproveUSDC = async () => {
+    if (!address) return
+    setApproving(true)
+    setStatus('📝 Approve USDC in MetaMask...')
+    
+    try {
+      writeContract({
+        address: USDC_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'approve',
+        args: [CTF_EXCHANGE, parseUnits('1000000000', 6)] // Approve 1 billion USDC
+      })
+    } catch (error: any) {
+      setStatus(`❌ Approval failed: ${error.message}`)
+      setApproving(false)
+    }
+  }
 
   const price = side === 'yes' ? (market.yesPrice || 0.5) : (market.noPrice || 0.5)
   const cost = parseFloat(dollarAmount) || 0 // User's dollar input IS the cost
@@ -54,15 +99,13 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
   }
 
   const handleTrade = async () => {
-    const privateKey = localStorage.getItem('polymarket_bot_key')
-    
-    if (!privateKey) {
-      setStatus('❌ Please configure your trading bot first')
+    if (!address || !isConnected) {
+      setStatus('❌ Please connect your wallet first')
       return
     }
 
     setLoading(true)
-    setStatus('Placing order...')
+    setStatus('🔐 Preparing order...')
 
     try {
       // Get the token ID for the selected side
@@ -73,32 +116,91 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
         setLoading(false)
         return
       }
-      
-      const response = await fetch('/api/bot/trade', {
+
+      // Step 1: Get order data from server (nonce, salt, expiration, etc.)
+      setStatus('📝 Building order...')
+      const orderDataRes = await fetch('/api/trade/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'place_order',
-          privateKey,
+          walletAddress: address,
           tokenId,
           side: 'BUY',
           size: shares.toString(),
           price: price.toString()
         })
       })
+      
+      const orderData = await orderDataRes.json()
+      if (!orderData.success) {
+        setStatus(`❌ ${orderData.message}`)
+        setLoading(false)
+        return
+      }
 
-      const result = await response.json()
-      console.log('Trade result:', result)
+      // Step 2: Sign the order with MetaMask
+      setStatus('✍️ Sign in MetaMask...')
+      
+      const signature = await signTypedDataAsync({
+        domain: orderData.domain,
+        types: orderData.types,
+        primaryType: 'Order',
+        message: orderData.order
+      })
 
-      if (result.success) {
-        setStatus('✅ Order placed successfully!')
-        setTimeout(() => onClose(), 2000)
-      } else {
-        setStatus(`❌ ${result.message}`)
+      console.log('Order signed:', signature)
+
+      // Step 3: Submit signed order to server
+      setStatus('📤 Submitting order...')
+      
+      // Add timeout to catch hanging requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      
+      try {
+        const submitRes = await fetch('/api/trade/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order: orderData.order,
+            signature,
+            walletAddress: address
+          }),
+          signal: controller.signal
+        })
+
+        clearTimeout(timeoutId)
+        
+        if (!submitRes.ok) {
+          const errorText = await submitRes.text()
+          console.error('Submit response not OK:', submitRes.status, errorText)
+          setStatus(`❌ Server error: ${submitRes.status}`)
+          setLoading(false)
+          return
+        }
+
+        const result = await submitRes.json()
+        console.log('Trade result:', result)
+
+        if (result.success) {
+          setStatus('✅ Order placed successfully!')
+          setTimeout(() => onClose(), 2000)
+        } else {
+          setStatus(`❌ ${result.message || 'Order submission failed'}`)
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        throw fetchError // Re-throw to outer catch
       }
     } catch (error: any) {
       console.error('Trade error:', error)
-      setStatus(`❌ ${error.message || 'Order failed'}`)
+      if (error.name === 'AbortError') {
+        setStatus('❌ Request timed out. Please try again.')
+      } else if (error.message?.includes('User rejected')) {
+        setStatus('❌ Transaction cancelled')
+      } else {
+        setStatus(`❌ ${error.message || 'Order failed'}`)
+      }
     } finally {
       setLoading(false)
     }
@@ -260,20 +362,32 @@ export function TradeModal({ market, onClose }: TradeModalProps) {
           )}
 
           {/* Action Buttons */}
-          {!botConfigured ? (
+          {!isConnected ? (
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 text-center">
               <p className="text-yellow-800 dark:text-yellow-200 font-medium">
-                🤖 Trading Bot Required
+                🔗 Wallet Required
               </p>
-              <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1 mb-3">
-                Configure your trading wallet to place orders
+              <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">
+                Connect your MetaMask wallet to trade
               </p>
-              <Link
-                href="/bot"
-                className="inline-block px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+            </div>
+          ) : !hasEnoughAllowance ? (
+            <div className="space-y-3">
+              <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-4 text-center">
+                <p className="text-orange-800 dark:text-orange-200 font-medium">
+                  🔐 USDC Approval Required
+                </p>
+                <p className="text-sm text-orange-600 dark:text-orange-400 mt-1">
+                  You need to approve Polymarket to spend your USDC (one-time)
+                </p>
+              </div>
+              <button
+                onClick={handleApproveUSDC}
+                disabled={approving || isApprovalPending}
+                className="w-full py-4 rounded-xl font-bold text-lg bg-orange-600 hover:bg-orange-700 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Setup Trading Bot →
-              </Link>
+                {isApprovalPending ? '⏳ Confirming...' : approving ? '📝 Check MetaMask...' : '🔓 Approve USDC'}
+              </button>
             </div>
           ) : (
             <button
